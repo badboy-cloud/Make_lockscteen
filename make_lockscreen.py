@@ -1,128 +1,99 @@
-import os
 import pytz
 from datetime import datetime
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from telegram import ChatAction
 from PIL import Image, ImageDraw, ImageFont
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
-
-# ---------------------------
-# CONFIG
-# ---------------------------
-
+# ---- CONFIG ----
 BOT_TOKEN = "7764742692:AAHUJ8V1utjXASJNx4UClh8wQAaT4_EC-QY"
+FRAME_PATH = "phone_frame.png"        # transparent mockup PNG
+FONT_DATE = "fonts/Roboto-Regular.ttf"
+FONT_TIME = "fonts/Roboto-Black.ttf"
 
-FRAME_PATH = "phone_frame.png"     # your transparent iPhone mockup
-FONT_DATE = "fonts/SFPRODISPLAYREGULAR.OTF"
-FONT_TIME = "fonts/SFPRODISPLAYBOLD.OTF"
-
-# Screen placement (adjust perfectly for your PNG)
+# Screen placement inside mockup
 SCREEN_X = 85
 SCREEN_Y = 130
 SCREEN_W = 880
 SCREEN_H = 1900
 
 
-# ---------------------------
-# PROCESS IMAGE FUNCTION
-# ---------------------------
+# ---- MAIN IMAGE PROCESSOR ----
+def generate_lockscreen(wallpaper_path):
+    # Load wallpaper
+    wp = Image.open(wallpaper_path).convert("RGB")
+    wp = wp.resize((SCREEN_W, SCREEN_H), Image.LANCZOS)
 
-def generate_lockscreen(user_image_path):
-
-    # Load user wallpaper
-    wallpaper = Image.open(user_image_path).convert("RGB")
-    wallpaper = wallpaper.resize((SCREEN_W, SCREEN_H), Image.LANCZOS)
-
-    # Load frame
+    # Load phone frame
     frame = Image.open(FRAME_PATH).convert("RGBA")
 
     # Canvas
     canvas = Image.new("RGBA", frame.size, (0, 0, 0, 255))
-
-    # Paste wallpaper inside phone screen
-    canvas.paste(wallpaper, (SCREEN_X, SCREEN_Y))
+    canvas.paste(wp, (SCREEN_X, SCREEN_Y))
 
     draw = ImageDraw.Draw(canvas)
 
-    # Get IST time
-    india = pytz.timezone("Asia/Kolkata")
-    now = datetime.now(india)
+    # Indian Time
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.now(ist)
 
     date_text = now.strftime("%a, %B %d")
     time_text = now.strftime("%I:%M")
 
     # Load fonts
-    font_date = ImageFont.truetype(FONT_DATE, 75)    # date size
-    font_time = ImageFont.truetype(FONT_TIME, 240)   # big time
+    font_date = ImageFont.truetype(FONT_DATE, 75)
+    font_time = ImageFont.truetype(FONT_TIME, 240)
 
     center_x = frame.width // 2
 
-    # Draw date
-    draw.text(
-        (center_x, SCREEN_Y + 60),
-        date_text,
-        font=font_date,
-        fill="white",
-        anchor="mm"
-    )
+    # Draw Date
+    draw.text((center_x, SCREEN_Y + 70), date_text, fill="white",
+              font=font_date, anchor="mm")
 
-    # Draw time
-    draw.text(
-        (center_x, SCREEN_Y + 260),
-        time_text,
-        font=font_time,
-        fill="white",
-        anchor="mm"
-    )
+    # Draw Time
+    draw.text((center_x, SCREEN_Y + 270), time_text,
+              fill="white", font=font_time, anchor="mm")
 
     # Add frame on top
     canvas.paste(frame, (0, 0), frame)
 
-    output_path = "final_output.jpg"
-    canvas.convert("RGB").save(output_path, quality=95)
-    return output_path
+    output = "final_output.jpg"
+    canvas.convert("RGB").save(output, quality=95)
+    return output
 
 
-# ---------------------------
-# BOT HANDLERS
-# ---------------------------
+# ---- TELEGRAM HANDLERS ----
 
-def start(update, context):
-    update.message.reply_text(
-        "Send me any picture and I will create a lockscreen mockup 😎"
-    )
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📱 Send me a wallpaper and I will turn it into an iPhone mockup!")
 
 
-def handle_image(update, context):
-    update.message.reply_chat_action(ChatAction.UPLOAD_PHOTO)
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo = update.message.photo[-1].file_id
+    file = await context.bot.get_file(photo)
 
-    try:
-        file = update.message.photo[-1].get_file()
-        input_path = "user_image.jpg"
-        file.download(input_path)
+    input_path = "user_wallpaper.jpg"
+    await file.download_to_drive(input_path)
 
-        final_image = generate_lockscreen(input_path)
-
-        update.message.reply_photo(open(final_image, "rb"))
-
-    except Exception as e:
-        update.message.reply_text("⚠️ Error processing image.")
-        print("ERROR:", e)
+    final_img = generate_lockscreen(input_path)
+    await update.message.reply_photo(photo=open(final_img, "rb"))
 
 
-# ---------------------------
-# MAIN
-# ---------------------------
+# ---- MAIN ----
 
 def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
+    application = Application.builder().token(BOT_TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.photo, handle_image))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
-    updater.start_polling()
-    updater.idle()
+    print("🔥 Lockscreen bot running on localhost...")
+    application.run_polling()
 
 
 if __name__ == "__main__":
