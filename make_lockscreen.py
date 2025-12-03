@@ -4,7 +4,7 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram import ChatAction
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = "7764742692:AAHUJ8V1utjXASJNx4UClh8wQAaT4_EC-QY"
 MOCKUP_FILE = "phone_frame.png"   # your transparent mockup PNG
 
 def detect_transparent_bbox(frame):
