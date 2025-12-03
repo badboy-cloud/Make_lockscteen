@@ -85,13 +85,15 @@ def process_image(wallpaper_path):
 
     draw = ImageDraw.Draw(result)
 
-    # -------- ANDROID STYLE TEXT --------
+# -------- ANDROID STYLE SUPER BIG TIME --------
+    draw = ImageDraw.Draw(result)
+
     time_color = (0, 0, 0, 255)
     date_color = (0, 0, 0, 255)
 
     try:
-        font_large = ImageFont.truetype("Roboto-Black.ttf", 150)   # VERY BOLD TIME
-        font_small = ImageFont.truetype("Roboto-Medium.ttf", 45)   # Medium DATE
+        font_large = ImageFont.truetype("Roboto-Black.ttf", 200)   # VERY VERY BIG TIME
+        font_small = ImageFont.truetype("Roboto-Medium.ttf", 55)   # Bigger DATE
     except:
         font_large = ImageFont.load_default()
         font_small = ImageFont.load_default()
@@ -101,16 +103,15 @@ def process_image(wallpaper_path):
 
     center_x = left + screen_w // 2
 
-    # Perfect Android-style layout
-    date_y = top + 40
-    time_y = date_y + 70
+    # Lower positions (fix small-size issue)
+    date_y = top + 55
+    time_y = date_y + 85
 
     date_w = draw.textbbox((0,0), date_text, font=font_small)[2]
     time_w = draw.textbbox((0,0), time_text, font=font_large)[2]
 
     draw.text((center_x - date_w/2, date_y), date_text, font=font_small, fill=date_color)
     draw.text((center_x - time_w/2, time_y), time_text, font=font_large, fill=time_color)
-
     output = "final_output.jpg"
     result.convert("RGB").save(output, quality=95)
     return output
