@@ -1,124 +1,119 @@
 import os
+import pytz
+from datetime import datetime
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram import ChatAction
-from PIL import Image, ImageDraw, ImageFont, ImageOps
-from datetime import datetime
-import pytz
+from PIL import Image, ImageDraw, ImageFont
+
+
+# ---------------------------
+# CONFIG
+# ---------------------------
 
 BOT_TOKEN = "7764742692:AAHUJ8V1utjXASJNx4UClh8wQAaT4_EC-QY"
-MOCKUP_FILE = "phone_frame.png"   # <-- your fixed transparent mockup
 
-# -------------------------------------------------------
-# Detect transparent area inside the mockup (screen area)
-# -------------------------------------------------------
-def detect_transparent_bbox(frame):
-    if frame.mode != "RGBA":
-        frame = frame.convert("RGBA")
-    alpha = frame.split()[-1]
-    return alpha.getbbox()   # returns (left, top, right, bottom)
+FRAME_PATH = "phone_frame.png"     # your transparent iPhone mockup
+FONT_DATE = "fonts/SFPRODISPLAYREGULAR.OTF"
+FONT_TIME = "fonts/SFPRODISPLAYBOLD.OTF"
 
-# -------------------------------------------------------
-# IST date
-# -------------------------------------------------------
-def get_date_text():
-    ist = pytz.timezone("Asia/Kolkata")
-    now = datetime.now(ist)
-    return now.strftime("%a, %B %-d")
+# Screen placement (adjust perfectly for your PNG)
+SCREEN_X = 85
+SCREEN_Y = 130
+SCREEN_W = 880
+SCREEN_H = 1900
 
-# -------------------------------------------------------
-# IST time
-# -------------------------------------------------------
-def get_time_text():
-    ist = pytz.timezone("Asia/Kolkata")
-    now = datetime.now(ist)
-    return now.strftime("%-I:%M")   # 1:23 format (no leading zero)
 
-# -------------------------------------------------------
-# Compose final lockscreen image
-# -------------------------------------------------------
-def process_image(wallpaper_path):
+# ---------------------------
+# PROCESS IMAGE FUNCTION
+# ---------------------------
 
-    frame = Image.open(MOCKUP_FILE).convert("RGBA")
-    wallpaper = Image.open(wallpaper_path).convert("RGBA")
+def generate_lockscreen(user_image_path):
 
-    # Detect transparent screen area
-    bbox = detect_transparent_bbox(frame)
-    left, top, right, bottom = bbox
-    screen_w = right - left
-    screen_h = bottom - top
+    # Load user wallpaper
+    wallpaper = Image.open(user_image_path).convert("RGB")
+    wallpaper = wallpaper.resize((SCREEN_W, SCREEN_H), Image.LANCZOS)
 
-    # Resize wallpaper to fill the screen
-    wp_w, wp_h = wallpaper.size
-    scale = max(screen_w / wp_w, screen_h / wp_h)
-    new_size = (int(wp_w * scale), int(wp_h * scale))
-    wallpaper_resized = wallpaper.resize(new_size, Image.LANCZOS)
+    # Load frame
+    frame = Image.open(FRAME_PATH).convert("RGBA")
 
-    # Center inside transparent screen
-    offset_x = left + (screen_w - new_size[0]) // 2
-    offset_y = top + (screen_h - new_size[1]) // 2
+    # Canvas
+    canvas = Image.new("RGBA", frame.size, (0, 0, 0, 255))
 
-    result = Image.new("RGBA", frame.size)
-    result.paste(wallpaper_resized, (offset_x, offset_y), wallpaper_resized)
-    result.alpha_composite(frame)
+    # Paste wallpaper inside phone screen
+    canvas.paste(wallpaper, (SCREEN_X, SCREEN_Y))
 
-    draw = ImageDraw.Draw(result)
+    draw = ImageDraw.Draw(canvas)
 
-    # -------------------------------------------------------
-    # Text settings (BIG TIME)
-    # -------------------------------------------------------
-    time_text = get_time_text()
-    date_text = get_date_text()
+    # Get IST time
+    india = pytz.timezone("Asia/Kolkata")
+    now = datetime.now(india)
 
-    time_color = (0, 0, 0, 255)
-    date_color = (0, 0, 0, 255)
+    date_text = now.strftime("%a, %B %d")
+    time_text = now.strftime("%I:%M")
 
-    try:
-        font_large = ImageFont.truetype("Roboto-Black.ttf", 200)  
-        font_small = ImageFont.truetype("Roboto-Medium.ttf", 60)
-    except:
-        font_large = ImageFont.load_default()
-        font_small = ImageFont.load_default()
+    # Load fonts
+    font_date = ImageFont.truetype(FONT_DATE, 75)    # date size
+    font_time = ImageFont.truetype(FONT_TIME, 240)   # big time
 
-    # Centering X
-    center_x = left + screen_w // 2
+    center_x = frame.width // 2
 
-    # Position Y (tuned for iPhone mockup)
-    date_y = top + 90
-    time_y = date_y + 120
+    # Draw date
+    draw.text(
+        (center_x, SCREEN_Y + 60),
+        date_text,
+        font=font_date,
+        fill="white",
+        anchor="mm"
+    )
 
-    # Center text
-    date_w = draw.textbbox((0,0), date_text, font=font_small)[2]
-    time_w = draw.textbbox((0,0), time_text, font=font_large)[2]
+    # Draw time
+    draw.text(
+        (center_x, SCREEN_Y + 260),
+        time_text,
+        font=font_time,
+        fill="white",
+        anchor="mm"
+    )
 
-    draw.text((center_x - date_w/2, date_y), date_text, font=font_small, fill=date_color)
-    draw.text((center_x - time_w/2, time_y), time_text, font=font_large, fill=time_color)
+    # Add frame on top
+    canvas.paste(frame, (0, 0), frame)
 
-    # Save final output
-    output = "final_output.jpg"
-    result.convert("RGB").save(output, quality=95)
-    return output
+    output_path = "final_output.jpg"
+    canvas.convert("RGB").save(output_path, quality=95)
+    return output_path
 
-# -------------------------------------------------------
-# Telegram Bot Handlers
-# -------------------------------------------------------
+
+# ---------------------------
+# BOT HANDLERS
+# ---------------------------
+
 def start(update, context):
     update.message.reply_text(
         "Send me any picture and I will create a lockscreen mockup 😎"
     )
 
+
 def handle_image(update, context):
     update.message.reply_chat_action(ChatAction.UPLOAD_PHOTO)
 
-    photo = update.message.photo[-1].get_file()
-    photo_path = "user_wallpaper.jpg"
-    photo.download(photo_path)
+    try:
+        file = update.message.photo[-1].get_file()
+        input_path = "user_image.jpg"
+        file.download(input_path)
 
-    final_image = process_image(photo_path)
-    update.message.reply_photo(open(final_image, "rb"))
+        final_image = generate_lockscreen(input_path)
 
-# -------------------------------------------------------
-# Run Bot
-# -------------------------------------------------------
+        update.message.reply_photo(open(final_image, "rb"))
+
+    except Exception as e:
+        update.message.reply_text("⚠️ Error processing image.")
+        print("ERROR:", e)
+
+
+# ---------------------------
+# MAIN
+# ---------------------------
+
 def main():
     updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
@@ -128,6 +123,7 @@ def main():
 
     updater.start_polling()
     updater.idle()
+
 
 if __name__ == "__main__":
     main()
