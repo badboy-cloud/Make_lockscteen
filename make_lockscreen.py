@@ -1,53 +1,68 @@
 import os
 import traceback
 import datetime
+import pytz
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram import ChatAction
 from PIL import Image, ImageDraw, ImageFont
 
 BOT_TOKEN = "7764742692:AAHUJ8V1utjXASJNx4UClh8wQAaT4_EC-QY"
-MOCKUP_FILE = "phone_frame.png"   # 372×750 transparent mockup
+MOCKUP_FILE = "phone_frame.png"   # 372×750 mockup from webmobilefirst
 
-# Pixel-perfect screen box
+# Pixel-perfect screen area for mockup
 SCREEN_BBOX = (20, 92, 352, 735)
 
-# User overrides (optional)
+# Custom overrides
 custom_time = None
 custom_date = None
+
+# --------- TIME & DATE (WITH IST FIX) ---------
 
 def get_time_text():
     global custom_time
     if custom_time:
         return custom_time
-    return datetime.datetime.now().strftime("%-I:%M")
+
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.datetime.now(ist)
+    return now.strftime("%-I:%M")  # iPhone style
 
 def get_date_text():
     global custom_date
     if custom_date:
         return custom_date
-    return datetime.datetime.now().strftime("%a, %B %-d")
+
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.datetime.now(ist)
+    return now.strftime("%a, %B %-d")  # e.g., Wed, December 3
+
+
+# --------- COMMANDS ---------
 
 def cmd_time(update, context):
     global custom_time
     try:
         custom_time = context.args[0]
-        update.message.reply_text(f"✔ Custom time set to: {custom_time}")
+        update.message.reply_text(f"Time set to {custom_time}")
     except:
-        update.message.reply_text("Usage: /time 10:11")
+        update.message.reply_text("Usage: /time 9:41")
 
 def cmd_date(update, context):
     global custom_date
     try:
         custom_date = " ".join(context.args)
-        update.message.reply_text(f"✔ Custom date set to: {custom_date}")
+        update.message.reply_text(f"Date set to {custom_date}")
     except:
-        update.message.reply_text("Usage: /date October 6")
+        update.message.reply_text("Usage: /date December 3")
 
 def cmd_reset(update, context):
     global custom_time, custom_date
     custom_time = None
     custom_date = None
-    update.message.reply_text("✔ Time & Date reset to REAL LIVE values.")
+    update.message.reply_text("✔ Time & Date reset to real IST time.")
+
+
+# --------- IMAGE PROCESSING ---------
 
 def process_image(wallpaper_path):
     frame = Image.open(MOCKUP_FILE).convert("RGBA")
@@ -65,45 +80,52 @@ def process_image(wallpaper_path):
     offset_x = left + (screen_w - new_size[0]) // 2
     offset_y = top + (screen_h - new_size[1]) // 2
 
-    bg = Image.new("RGBA", frame.size, (0, 0, 0, 255))
+    # Background black
+    bg = Image.new("RGBA", frame.size, (0,0,0,255))
     result = bg.copy()
 
     result.paste(wallpaper_resized, (offset_x, offset_y), wallpaper_resized)
     result.alpha_composite(frame)
 
+    # -------- ADD DATE & TIME TEXT (BIGGER + BLACK) --------
     draw = ImageDraw.Draw(result)
-    text_color = (255, 255, 255, 255)
-
-    time_text = get_time_text()
-    date_text = get_date_text()
+    time_color = (0, 0, 0, 255)
+    date_color = (0, 0, 0, 220)
 
     try:
-        font_large = ImageFont.truetype("Roboto-Bold.ttf", 60)
-        font_small = ImageFont.truetype("Roboto-Regular.ttf", 24)
+        font_large = ImageFont.truetype("Roboto-Bold.ttf", 85)   # Large time
+        font_small = ImageFont.truetype("Roboto-Regular.ttf", 32) # Larger date
     except:
         font_large = ImageFont.load_default()
         font_small = ImageFont.load_default()
 
+    time_text = get_time_text()
+    date_text = get_date_text()
+
     center_x = left + screen_w // 2
-    time_y = top + 30
-    date_y = top + 5
+    date_y = top + 30
+    time_y = date_y + 40
 
-    time_w = draw.textbbox((0,0), time_text, font=font_large)[2]
     date_w = draw.textbbox((0,0), date_text, font=font_small)[2]
+    time_w = draw.textbbox((0,0), time_text, font=font_large)[2]
 
-    draw.text((center_x - date_w/2, date_y), date_text, font=font_small, fill=text_color)
-    draw.text((center_x - time_w/2, time_y), time_text, font=font_large, fill=text_color)
+    draw.text((center_x - date_w/2, date_y), date_text, font=font_small, fill=date_color)
+    draw.text((center_x - time_w/2, time_y), time_text, font=font_large, fill=time_color)
 
     output = "final_output.jpg"
     result.convert("RGB").save(output, quality=95)
     return output
 
+
+# --------- BOT HANDLERS ---------
+
 def start(update, context):
-    update.message.reply_text("Send me a picture and I'll create a perfect iPhone lockscreen with LIVE time 😎")
+    update.message.reply_text("Send a picture and I will create a perfect iPhone lockscreen with REAL India Time 🇮🇳🕒")
 
 def handle_image(update, context):
     try:
         update.message.reply_chat_action(ChatAction.UPLOAD_PHOTO)
+
         photo = update.message.photo[-1].get_file()
         photo_path = "user_wallpaper.jpg"
         photo.download(photo_path)
@@ -114,6 +136,9 @@ def handle_image(update, context):
     except Exception as e:
         update.message.reply_text(f"Error: {str(e)}")
         print(traceback.format_exc())
+
+
+# --------- MAIN ---------
 
 def main():
     updater = Updater(BOT_TOKEN, use_context=True)
@@ -127,6 +152,7 @@ def main():
 
     updater.start_polling()
     updater.idle()
+
 
 if __name__ == "__main__":
     main()
